@@ -1,0 +1,20 @@
+[
+  {
+    "id": "airpods-pro-3",
+    "name": "AirPods Pro 3",
+    "price": 249.0,
+    "image": "/images/airpods-pro-3-hero-select-202509.jfif"
+  },
+  {
+    "id": "galaxy-buds4-pro",
+    "name": "Galaxy Buds4 Pro",
+    "price": 249.99,
+    "image": "/images/us-galaxy-buds4-r640-sm-r640nzwaxar-551382417.jpg"
+  },
+  {
+    "id": "galaxy-xr",
+    "name": "Galaxy XR",
+    "price": 1799.99,
+    "image": "/images/SDSAC-9939-XR-1_Front_PC-1920x1080.jpg"
+  }
+]
