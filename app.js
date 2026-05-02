@@ -5,6 +5,9 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Load product data
+const products = require("./data/products.json");
+
 // Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -18,7 +21,10 @@ app.use(express.static(path.join(__dirname, "public")));
 
 // Routes
 app.get("/", (req, res) => {
-  res.render("index", { title: "PrimeCart" });
+  res.render("index", {
+    title: "PrimeCart",
+    products
+  });
 });
 
 // Start server

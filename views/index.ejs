@@ -1,11 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="/styles.css">
-  <title><%= title %></title>
+  <title>
+    <%= title %>
+  </title>
 </head>
+
 <body>
 
   <header class="header">
@@ -16,40 +20,23 @@
     <div class="grid">
 
       <!-- Product Card -->
-      <div class="card">
-        <img src="/images/airpods-pro-3-hero-select-202509.jfif" alt="AirPods Pro 3">
-        
-        <div class="card-body">
-            <h2>AirPods Pro 3</h2>
-            <p>$249.00</p>
+      <% products.forEach(product=> { %>
+        <div class="card">
+          <img src="<%=product.image %>" alt="<%= product.name %>">
+
+          <div class="card-body">
+            <h2>
+              <%= product.name %>
+            </h2>
+            <p>$<%= product.price.toFixed(2) %>
+            </p>
             <button>Buy</button>
+          </div>
         </div>
-      </div>
-
-      <div class="card">
-        <img src="/images/us-galaxy-buds4-r640-sm-r640nzwaxar-551382417.jpg" alt="Galaxy Buds4 Pro">
-        
-        <div class="card-body">
-            <h2>Galaxy Buds4 Pro</h2>
-            <p>$249.99</p>
-            <button>Buy</button>
-        </div>
-
-      </div>
-
-      <div class="card">
-        <img src="/images/SDSAC-9939-XR-1_Front_PC-1920x1080.jpg" alt="Galaxy XR">
-        
-        <div class="card-body">
-            <h2>Galaxy XR</h2>
-            <p>$1,799.99</p>
-            <button>Buy</button>
-        </div>
-
-      </div>
-
+        <% }) %>
     </div>
   </main>
 
 </body>
+
 </html>
