@@ -129,11 +129,6 @@ app.post("/orders", async (req, res) => {
   }
 });
 
-// Start server
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`PrimeCart server running on port ${PORT}`);
-});
-
 app.get("/checkout/:id", (req, res) => {
   const product = products.find((p) => p.id === req.params.id);
 
@@ -145,4 +140,8 @@ app.get("/checkout/:id", (req, res) => {
     title: "Checkout - PrimeCart",
     product
   });
+});
+// Start server
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`PrimeCart server running on port ${PORT}`);
 });
