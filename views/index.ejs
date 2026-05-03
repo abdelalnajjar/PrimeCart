@@ -30,7 +30,9 @@
             </h2>
             <p>$<%= product.price.toFixed(2) %>
             </p>
-            <button>Buy</button>
+            <a href="/checkout/<%= product.id %>">
+              <button>Buy</button>
+            </a>
           </div>
         </div>
         <% }) %>

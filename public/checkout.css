@@ -1,0 +1,123 @@
+/* Checkout Layout */
+.checkout-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 30px;
+  align-items: start;
+}
+
+/* Product card tweak */
+.checkout-product img {
+  max-height: 220px;
+  object-fit: cover;
+}
+
+/* Form styling */
+.checkout-form {
+  padding: 20px;
+  text-align: left;
+}
+
+.checkout-form h2 {
+  margin-bottom: 15px;
+}
+
+/* Form groups */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin-bottom: 5px;
+}
+
+/* Inputs */
+.form-group input,
+.form-group textarea {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  font-size: 0.9rem;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  border-color: #111827;
+  box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.1);
+}
+
+/* Textarea */
+.form-group textarea {
+  resize: none;
+  min-height: 80px;
+}
+
+/* Row layout (first + last name) */
+.form-row {
+  display: flex;
+  gap: 10px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+.checkout-section {
+  margin-top: 20px;
+  margin-bottom: 20px;
+  padding-top: 15px;
+  padding-bottom: 15px;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Button full width */
+.checkout-form button {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.quantity-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+}
+
+.quantity-control button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 38px;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.quantity-control input {
+  width: 55px;
+  height: 38px;
+  padding: 0;
+  margin: 0;
+  text-align: center;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  font-size: 0.95rem;
+  box-sizing: border-box;
+}
+
+/* Product image resize */
+.checkout-product img {
+  object-fit: cover;
+  max-height: 100%;
+}

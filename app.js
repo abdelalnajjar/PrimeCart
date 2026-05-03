@@ -11,9 +11,10 @@ const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, PutCommand } = require("@aws-sdk/lib-dynamodb");
 const { v4: uuidv4 } = require("uuid");
 
-
 //create DynamoDB client
-const client = new DynamoDBClient({ region: "us-west-1" });
+const client = new DynamoDBClient({
+  region: process.env.AWS_REGION || "us-west-1"
+});
 const docClient = DynamoDBDocumentClient.from(client);
 
 // Load product data
@@ -34,44 +35,114 @@ app.use(express.static(path.join(__dirname, "public")));
 app.get("/", (req, res) => {
   res.render("index", {
     title: "PrimeCart",
-    products
+    products,
   });
 });
 
-
-//  /orders route
+// POST  /orders route
 app.post("/orders", async (req, res) => {
   try {
-    const { name, item } = req.body;
+    const {
+      firstName,
+      lastName,
+      email,
+      street,
+      city,
+      state,
+      zip,
+      country,
+      productId,
+      quantity
+    } = req.body;
 
-    if (!name || !item) {
-      return res.status(400).json({ error: "Missing fields" });
+    const product = products.find((p) => p.id === productId);
+
+    // if product not found, return error
+    if (!product) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid product ID"
+      });
+    }
+
+    const qty = Number(quantity);
+    const shippingAddress = {
+      street,
+      city,
+      state,
+      zip,
+      country
+    };
+
+    if (
+      !firstName ||
+      !lastName ||
+      !email ||
+      !shippingAddress.street ||
+      !shippingAddress.city ||
+      !shippingAddress.state ||
+      !shippingAddress.zip ||
+      !shippingAddress.country ||
+      !qty ||
+      qty < 1
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing or invalid checkout fields",
+      });
     }
 
     const order = {
       orderId: uuidv4(),
-      name,
-      item,
+      firstName,
+      lastName,
+      email,
+      shippingAddress,
+      productId,
+      productName: product.name,
+      quantity: qty,
+      unitPrice: product.price,
+      total: Number((product.price * qty).toFixed(2)),
+      status: "SUBMITTED",
       createdAt: new Date().toISOString()
     };
 
     await docClient.send(
       new PutCommand({
-        TableName: "orders",
-        Item: order
-      })
+        TableName: process.env.ORDERS_TABLE_NAME || "orders",
+        Item: order,
+      }),
     );
 
-    res.status(201).json({ message: "Order saved", order });
-
+    res.status(201).json({
+      success: true,
+      message: "Order saved",
+      order,
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to save order" });
+    console.error("Failed to save order:", err);
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to save order"
+    });
   }
 });
-
 
 // Start server
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`PrimeCart server running on port ${PORT}`);
+});
+
+app.get("/checkout/:id", (req, res) => {
+  const product = products.find((p) => p.id === req.params.id);
+
+  if (!product) {
+    return res.status(404).send("Product not found");
+  }
+
+  res.render("checkout", {
+    title: "Checkout - PrimeCart",
+    product
+  });
 });
