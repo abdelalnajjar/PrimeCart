@@ -194,12 +194,19 @@ app.get("/health", (req, res) => {
 });
 
 // deep health check that checks both app and database connectivity
-// removes instances if database is unreacheable, even if app may be running
+// removes instances if database is unreachable, even if app may be running
 app.get("/health/deep", async (req, res) => {
   try {
     await client.send(
       new DescribeTableCommand({
         TableName: process.env.ORDERS_TABLE_NAME || "orders"
+      })
+    );
+
+    console.log(
+      JSON.stringify({
+        event: "HEALTH_DEEP_OK",
+        timestamp: new Date().toISOString()
       })
     );
 
@@ -211,7 +218,13 @@ app.get("/health/deep", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Deep health check failed:", err);
+    console.error(
+      JSON.stringify({
+        event: "HEALTH_DEEP_FAILED",
+        error: err.message,
+        timestamp: new Date().toISOString()
+      })
+    );
 
     res.status(500).json({
       status: "error",
@@ -224,7 +237,6 @@ app.get("/health/deep", async (req, res) => {
 
 // Start server
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`PrimeCart server running on port ${PORT}`);
   console.log(
     JSON.stringify({
       event: "APP_STARTED",
