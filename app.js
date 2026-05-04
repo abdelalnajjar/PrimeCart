@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3000;
 
 // AWS dynamoDB
 // import AWS SDK
-const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBClient, DescribeTableCommand } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, PutCommand } = require("@aws-sdk/lib-dynamodb");
 const { v4: uuidv4 } = require("uuid");
 
@@ -30,6 +30,29 @@ app.set("views", path.join(__dirname, "views"));
 
 // Static files
 app.use(express.static(path.join(__dirname, "public")));
+
+// Logging Middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+
+    console.log(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        path: req.originalUrl,
+        statusCode: res.statusCode,
+        durationMs: duration,
+        ip: req.ip,
+        userAgent: req.get("user-agent")
+      })
+    );
+  });
+
+  next();
+});
 
 // Routes
 app.get("/", (req, res) => {
@@ -114,13 +137,30 @@ app.post("/orders", async (req, res) => {
       }),
     );
 
+    console.log(
+      JSON.stringify({
+        event: "ORDER_CREATED",
+        orderId: order.orderId,
+        productId: order.productId,
+        quantity: order.quantity,
+        total: order.total,
+        timestamp: new Date().toISOString()
+      })
+    );
+
     return res.status(201).render("confirmation", {
       title: "Order Confirmation - PrimeCart",
       order
     });
 
   } catch (err) {
-    console.error("Failed to save order:", err);
+    console.error(
+      JSON.stringify({
+        event: "ORDER_CREATE_FAILED",
+        error: err.message,
+        timestamp: new Date().toISOString()
+      })
+    );
 
     res.status(500).json({
       success: false,
@@ -185,4 +225,13 @@ app.get("/health/deep", async (req, res) => {
 // Start server
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`PrimeCart server running on port ${PORT}`);
+  console.log(
+    JSON.stringify({
+      event: "APP_STARTED",
+      port: PORT,
+      region: process.env.AWS_REGION || "us-west-1",
+      table: process.env.ORDERS_TABLE_NAME || "orders",
+      timestamp: new Date().toISOString()
+    })
+  );
 });
