@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:k6:load": "k6 run tests/k6/load.js",
+    "test:k6:spike": "k6 run tests/k6/spike.js"
   },
   "keywords": [
     "cloud",
