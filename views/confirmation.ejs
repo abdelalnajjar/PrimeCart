@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/checkout.css">
+    <title>
+        <%= title %>
+    </title>
+</head>
+
+<body>
+
+    <header class="header">
+        <a href="/">
+            <h1>Prime<span>Cart</span></h1>
+        </a>
+    </header>
+
+    <main class="container">
+        <div class="card">
+            <h2>Order Confirmed</h2>
+
+            <p>Thank you, <strong>
+                    <%= order.firstName %>
+                        <%= order.lastName %>
+                </strong>.</p>
+            <p>Your order has been submitted successfully.</p>
+
+            <p><strong>Order ID:</strong>
+                <%= order.orderId %>
+            </p>
+            <p><strong>Product:</strong>
+                <%= order.productName %>
+            </p>
+            <p><strong>Quantity:</strong>
+                <%= order.quantity %>
+            </p>
+            <p><strong>Total:</strong> $<%= order.total.toFixed(2) %>
+            </p>
+
+            <a href="/">
+                <button>Continue Shopping</button>
+            </a>
+        </div>
+    </main>
+
+</body>
+
+</html>

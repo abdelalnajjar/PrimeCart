@@ -1,17 +1,15 @@
 body {
-  font-family: 'Segoe UI', sans-serif;
+  font-family: "Segoe UI", sans-serif;
   color: #1f2937;
   background: linear-gradient(to bottom, #f8fafc, #eef2f7);
 }
-
-
 
 .header {
   padding: 20px 0;
   text-align: center;
   background: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(0,0,0,0.05);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   position: sticky;
   top: 0;
 }
@@ -50,13 +48,12 @@ body {
   text-align: center;
   height: 100%;
   transition: all 0.25s ease;
-
 }
 
 .card:hover {
-  box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
   transform: translateY(-5px);
-  box-shadow: 0 12px 24px rgba(0,0,0,0.08);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
 }
 
 .card img {
@@ -88,9 +85,15 @@ button {
 button:hover {
   background: #1f2937;
   transform: translateY(-1px);
-  box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
 }
 
 button:active {
   transform: scale(0.98);
+}
+
+a {
+  color: #111827;
+  text-decoration: none;
+  font-weight: 500;
 }

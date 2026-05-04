@@ -114,11 +114,11 @@ app.post("/orders", async (req, res) => {
       }),
     );
 
-    res.status(201).json({
-      success: true,
-      message: "Order saved",
-      order,
+    return res.status(201).render("confirmation", {
+      title: "Order Confirmation - PrimeCart",
+      order
     });
+
   } catch (err) {
     console.error("Failed to save order:", err);
 
@@ -141,6 +141,7 @@ app.get("/checkout/:id", (req, res) => {
     product
   });
 });
+
 // Start server
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`PrimeCart server running on port ${PORT}`);
