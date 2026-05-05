@@ -7,3 +7,17 @@ node_modules/
 # logs
 logs
 *.log
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfvars
+*.auto.tfvars
+terraform.tfvars
+deploy/terraform/.build/
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
