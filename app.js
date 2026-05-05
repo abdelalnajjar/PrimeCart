@@ -10,12 +10,25 @@ const PORT = process.env.PORT || 3000;
 const { DynamoDBClient, DescribeTableCommand } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, PutCommand } = require("@aws-sdk/lib-dynamodb");
 const { v4: uuidv4 } = require("uuid");
+//SQS
+const { SQSClient, SendMessageCommand } = require("@aws-sdk/client-sqs");
 
 //create DynamoDB client
 const client = new DynamoDBClient({
   region: process.env.AWS_REGION || "us-west-1"
 });
 const docClient = DynamoDBDocumentClient.from(client);
+
+
+// Initialize SQS client to send and receive messages from the orders queue
+const sqsClient = new SQSClient({
+  region: process.env.AWS_REGION || "us-west-1"
+});
+
+const ORDERS_QUEUE_URL =
+  process.env.ORDERS_QUEUE_URL ||
+  "https://sqs.us-west-1.amazonaws.com/774676933701/primecart-orders-queue";
+
 
 // Load product data
 const products = require("./data/products.json");
@@ -130,11 +143,11 @@ app.post("/orders", async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    await docClient.send(
-      new PutCommand({
-        TableName: process.env.ORDERS_TABLE_NAME || "orders",
-        Item: order,
-      }),
+    await sqsClient.send(
+      new SendMessageCommand({
+        QueueUrl: ORDERS_QUEUE_URL,
+        MessageBody: JSON.stringify(order)
+      })
     );
 
     console.log(
