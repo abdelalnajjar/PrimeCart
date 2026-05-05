@@ -29,19 +29,47 @@ async function processOrders() {
     );
 
     if (!result.Messages) {
-      console.log("No messages found");
+      console.log(
+        JSON.stringify({
+          event: "SQS_NO_MESSAGES",
+          timestamp: new Date().toISOString()
+        })
+      );
       return;
     }
 
     for (const message of result.Messages) {
       const order = JSON.parse(message.Body);
 
-      await docClient.send(
-        new PutCommand({
-          TableName: ORDERS_TABLE_NAME,
-          Item: order
-        })
-      );
+      try {
+        await docClient.send(
+          new PutCommand({
+            TableName: ORDERS_TABLE_NAME,
+            Item: order,
+            ConditionExpression: "attribute_not_exists(orderId)"    // Prevent duplicate orders
+          })
+        );
+
+        console.log(
+          JSON.stringify({
+            event: "ORDER_SAVED",
+            orderId: order.orderId,
+            timestamp: new Date().toISOString()
+          })
+        );
+      } catch (err) {
+        if (err.name === "ConditionalCheckFailedException") {
+          console.warn(
+            JSON.stringify({
+              event: "DUPLICATE_ORDER_PREVENTED",
+              orderId: order.orderId,
+              timestamp: new Date().toISOString()
+            })
+          );
+        } else {
+          throw err;
+        }
+      }
 
       await sqsClient.send(
         new DeleteMessageCommand({
@@ -50,13 +78,32 @@ async function processOrders() {
         })
       );
 
-      console.log(`Order saved and message deleted: ${order.orderId}`);
+      console.log(
+        JSON.stringify({
+          event: "SQS_MESSAGE_DELETED",
+          orderId: order.orderId,
+          timestamp: new Date().toISOString()
+        })
+      );
     }
   } catch (err) {
-    console.error("Worker error:", err.message);
+    console.error(
+      JSON.stringify({
+        event: "SQS_WORKER_ERROR",
+        error: err.message,
+        timestamp: new Date().toISOString()
+      })
+    );
   }
 }
 
 setInterval(processOrders, 5000);
 
-console.log("SQS worker started...");
+console.log(
+  JSON.stringify({
+    event: "SQS_WORKER_STARTED",
+    region: REGION,
+    table: ORDERS_TABLE_NAME,
+    timestamp: new Date().toISOString()
+  })
+);
