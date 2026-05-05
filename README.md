@@ -15,7 +15,8 @@ PrimeCart is a cloud-based e-commerce application that supports guest checkout a
 * **Backend:** Node.js, Express
 * **Frontend:** EJS (server-rendered views)
 * **Styling:** Custom CSS (minimal, modern UI)
-* **Cloud (Planned):** AWS EC2, ALB, DynamoDB, S3, SQS, CloudWatch
+* **Cloud (Terraform, current):** EC2 (single instance), DynamoDB (orders), private S3 (app zip for bootstrapping), IAM instance profile — see `deploy/README.md`
+* **Cloud (not in Terraform yet):** ALB, Auto Scaling Group, SQS, CloudWatch beyond defaults
 
 ---
 
@@ -45,7 +46,7 @@ http://localhost:3000
 
 * Minimalist modern UI with product cards
 * Server-rendered pages using EJS
-* Static asset serving (images, CSS)
+* Static asset serving (CSS under `public/`; product images load from URLs in `data/products.json`, typically S3)
 * Sample product catalog (electronics)
 
 ---
@@ -56,6 +57,10 @@ http://localhost:3000
 PrimeCart/
 ├── data/
 │   └── products.json
+├── deploy/
+│   ├── bootstrap.sh
+│   ├── README.md
+│   └── terraform/
 ├── public/
 │   ├── images/
 │   └── styles.css
@@ -137,33 +142,37 @@ Your numbers will differ by hardware, network, and AWS setup.
 
 ## Sample Products
 
-* Wireless Earbuds
-* Mechanical Keyboard
-* Smartwatch
-* Portable Speaker
-* Fast Charger
+See `data/products.json` (e.g. AirPods Pro 3, Galaxy Buds4 Pro, Galaxy XR).
 
 ---
 
 ## Future Enhancements (Cloud Integration)
 
-* **Product storage:** DynamoDB
-* **Images:** AWS S3
+* **Product catalog in DynamoDB** (today: JSON file; **orders** already use DynamoDB in AWS/local when configured)
 * **Checkout queue:** AWS SQS
-* **Auto-scaling:** EC2 + Auto Scaling Group
-* **Load balancing:** Application Load Balancer (ALB)
-* **Monitoring:** CloudWatch
+* **Auto-scaling:** EC2 + Auto Scaling Group (behind load balancer)
+* **Load balancing:** Application Load Balancer (ALB) in front of multiple instances
+* **Monitoring:** CloudWatch dashboards/alarms
 
 ---
 
-## Architecture (Planned)
+## Architecture
+
+**Deployed today (Terraform)** — single EC2, no load balancer:
 
 ```
-Client → ALB → EC2 (Node.js API) → DynamoDB
+Client → EC2:80 (Express) → DynamoDB (orders)
+         first boot: EC2 reads private S3 (app zip only)
+```
+
+Catalog images: HTTPS URLs in `products.json` pointing at objects **already uploaded** to a **separate** S3 bucket (not created by Terraform). The S3 bucket in `deploy/terraform` exists **only** to host the **deployment zip** for EC2 bootstrap—see `deploy/README.md` (“S3 caveat”).
+
+**Target / coursework roadmap** (not in current Terraform):
+
+```
+Client → ALB → EC2 pool (ASG) → DynamoDB
                       ↓
-                     S3 (images)
-                      ↓
-                     SQS (checkout queue)
+                    SQS (checkout buffer)
 ```
 
 ---
@@ -182,7 +191,8 @@ Client → ALB → EC2 (Node.js API) → DynamoDB
 * Local Node.js app ✅
 * UI with product cards ✅
 * GitHub repo setup ✅
-* Cloud deployment ⏳ (in progress)
+* AWS one-box deploy (Terraform: EC2 + DynamoDB + S3 artifact + IAM) ✅ — details in `deploy/README.md`
+* ALB, ASG, SQS ⏳ not provisioned in current Terraform
 
 ---
 
