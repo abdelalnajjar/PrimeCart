@@ -191,8 +191,7 @@ Client → ALB → EC2 pool (ASG) → DynamoDB
 * Local Node.js app ✅
 * UI with product cards ✅
 * GitHub repo setup ✅
-* AWS one-box deploy (Terraform: EC2 + DynamoDB + S3 artifact + IAM) ✅ — details in `deploy/README.md`
-* ALB, ASG, SQS ⏳ not provisioned in current Terraform
+* Cloud deployment ⏳ (in progress)
 
 ---
 
