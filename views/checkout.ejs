@@ -33,6 +33,7 @@
 
             <form class="checkout-form card" action="/orders" method="POST">
                 <input type="hidden" name="productId" value="<%= product.id %>" />
+                <input type="hidden" name="orderId" value="<%= idempotencyKey %>" />
 
                 <h2>Shipping Details</h2>
 

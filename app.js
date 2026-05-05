@@ -1,6 +1,7 @@
 const express = require("express");
 const path = require("path");
 require("dotenv").config();
+const crypto = require("crypto");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -128,8 +129,10 @@ app.post("/orders", async (req, res) => {
       });
     }
 
+    const orderId = req.body.orderId || uuidv4();
+
     const order = {
-      orderId: uuidv4(),
+      orderId,
       firstName,
       lastName,
       email,
@@ -152,7 +155,7 @@ app.post("/orders", async (req, res) => {
 
     console.log(
       JSON.stringify({
-        event: "ORDER_CREATED",
+        event: "ORDER_ENQUEUED",
         orderId: order.orderId,
         productId: order.productId,
         quantity: order.quantity,
@@ -161,15 +164,14 @@ app.post("/orders", async (req, res) => {
       })
     );
 
-    return res.status(201).render("confirmation", {
-      title: "Order Confirmation - PrimeCart",
-      order
-    });
+    return res.redirect(
+      `/confirmation/${order.orderId}?productName=${encodeURIComponent(order.productName)}&quantity=${order.quantity}&total=${order.total}`
+    );
 
   } catch (err) {
     console.error(
       JSON.stringify({
-        event: "ORDER_CREATE_FAILED",
+        event: "ORDER_ENQUEUE_FAILED",
         error: err.message,
         timestamp: new Date().toISOString()
       })
@@ -191,7 +193,20 @@ app.get("/checkout/:id", (req, res) => {
 
   res.render("checkout", {
     title: "Checkout - PrimeCart",
-    product
+    product,
+    idempotencyKey: crypto.randomUUID()
+  });
+});
+
+app.get("/confirmation/:orderId", (req, res) => {
+  res.render("confirmation", {
+    title: "Order Received - PrimeCart",
+    order: {
+      orderId: req.params.orderId,
+      productName: req.query.productName,
+      quantity: req.query.quantity,
+      total: Number(req.query.total)
+    }
   });
 });
 
