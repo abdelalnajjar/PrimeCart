@@ -7,3 +7,12 @@ instance_type   = "t2.micro" # or t3.micro if your Free Tier lists it
 # Optional: open TCP 22 from your IP for EC2 Instance Connect (browser SSH) or ssh.
 # Replace with your public IP (search "what is my ip"). Leave unset for no SSH rule.
 # ssh_ingress_cidrs = ["203.0.113.10/32"]
+
+# Optional ASG / logging (defaults are fine for coursework demos).
+# asg_min_size                  = 2
+# asg_max_size                  = 6
+# asg_desired_capacity          = 2
+# asg_health_check_grace_period = 600
+# asg_instance_warmup           = 300
+# log_retention_days            = 14
+# asg_cpu_alarm_threshold       = 50

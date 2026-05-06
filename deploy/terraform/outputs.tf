@@ -1,16 +1,26 @@
 output "app_url" {
-  description = "Open in a browser after user-data finishes (often 2–5 minutes). Uses port 80."
-  value       = "http://${aws_instance.app.public_dns}"
+  description = "Open in a browser after instances pass ALB health checks (often several minutes on first boot)."
+  value       = "http://${aws_lb.app.dns_name}"
 }
 
-output "app_public_ip" {
-  description = "EC2 public IPv4 (same target as app_url)."
-  value       = aws_instance.app.public_ip
+output "alb_dns_name" {
+  description = "ALB DNS name (same host as app_url without scheme)."
+  value       = aws_lb.app.dns_name
 }
 
-output "instance_id" {
-  description = "EC2 instance id (for console log / Systems Manager troubleshooting)."
-  value       = aws_instance.app.id
+output "autoscaling_group_name" {
+  description = "ASG name (for CLI instance refresh, scaling, or demos)."
+  value       = aws_autoscaling_group.app.name
+}
+
+output "cloudwatch_log_group_app" {
+  description = "Log group for PrimeCart web app stdout (via CloudWatch agent)."
+  value       = aws_cloudwatch_log_group.app.name
+}
+
+output "cloudwatch_log_group_worker" {
+  description = "Log group for PrimeCart SQS worker stdout."
+  value       = aws_cloudwatch_log_group.worker.name
 }
 
 output "orders_table_name" {
@@ -19,7 +29,7 @@ output "orders_table_name" {
 }
 
 output "orders_queue_url" {
-  description = "SQS queue URL; EC2 user-data sets ORDERS_QUEUE_URL to this value."
+  description = "SQS queue URL; set ORDERS_QUEUE_URL locally if you want to use the same queue as the deployed stack."
   value       = aws_sqs_queue.orders.url
 }
 
