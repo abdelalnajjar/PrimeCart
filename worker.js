@@ -53,6 +53,7 @@ async function processOrders() {
         console.log(
           JSON.stringify({
             event: "ORDER_SAVED",
+            traceId: order.traceId,
             orderId: order.orderId,
             timestamp: new Date().toISOString()
           })
@@ -62,6 +63,7 @@ async function processOrders() {
           console.warn(
             JSON.stringify({
               event: "DUPLICATE_ORDER_PREVENTED",
+              traceId: order.traceId,
               orderId: order.orderId,
               timestamp: new Date().toISOString()
             })
@@ -81,6 +83,7 @@ async function processOrders() {
       console.log(
         JSON.stringify({
           event: "SQS_MESSAGE_DELETED",
+          traceId: order.traceId,
           orderId: order.orderId,
           timestamp: new Date().toISOString()
         })

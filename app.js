@@ -77,6 +77,8 @@ app.get("/", (req, res) => {
 
 // POST  /orders route
 app.post("/orders", async (req, res) => {
+  // Generate trace ID for correlating logs across services
+  const traceId = crypto.randomUUID();
   try {
     const {
       firstName,
@@ -131,6 +133,7 @@ app.post("/orders", async (req, res) => {
     const orderId = req.body.orderId || crypto.randomUUID();
 
     const order = {
+      traceId,
       orderId,
       firstName,
       lastName,
@@ -155,6 +158,7 @@ app.post("/orders", async (req, res) => {
     console.log(
       JSON.stringify({
         event: "ORDER_ENQUEUED",
+        traceId,
         orderId: order.orderId,
         productId: order.productId,
         quantity: order.quantity,
@@ -171,6 +175,7 @@ app.post("/orders", async (req, res) => {
     console.error(
       JSON.stringify({
         event: "ORDER_ENQUEUE_FAILED",
+        traceId,
         error: err.message,
         timestamp: new Date().toISOString()
       })
