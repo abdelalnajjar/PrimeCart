@@ -13,6 +13,7 @@ npm ci --omit=dev
 cat >/etc/sysconfig/primecart <<EOF
 AWS_REGION=${aws_region}
 ORDERS_TABLE_NAME=${orders_table}
+ORDERS_QUEUE_URL=${orders_queue_url}
 PORT=80
 EOF
 
@@ -35,5 +36,25 @@ User=root
 WantedBy=multi-user.target
 UNIT
 
+cat >/etc/systemd/system/primecart-worker.service <<'UNIT'
+[Unit]
+Description=PrimeCart SQS to DynamoDB worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/sysconfig/primecart
+WorkingDirectory=/opt/primecart
+ExecStart=/usr/bin/node worker.js
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
 systemctl daemon-reload
 systemctl enable --now primecart.service
+systemctl enable --now primecart-worker.service

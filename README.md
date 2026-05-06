@@ -99,11 +99,11 @@ BASE_URL=http://localhost:3000 VUS=100 DURATION=5m npm run test:k6:load
 BASE_URL=http://localhost:3000 SPIKE_TARGET_VUS=300 npm run test:k6:spike
 ```
 
-More options (`CHECKOUT_PCT`, stage timings, thresholds) are at the top of `tests/k6/load.js` and `tests/k6/spike.js`. Checkout calls DynamoDB—use the same AWS settings as the app if you want orders to succeed instead of 500s.
+More options (`CHECKOUT_PCT`, stage timings, thresholds) are at the top of `tests/k6/load.js` and `tests/k6/spike.js`. Successful checkout **enqueues SQS** (`POST /orders` then redirect to the confirmation page). Use the same **`AWS_REGION`**, **`ORDERS_QUEUE_URL`**, and credentials as the app so `SendMessage` succeeds; persistence to DynamoDB is done by **`worker.js`** if it is running.
 
 ### Sample results (local, May 2026)
 
-Same machine as the app, `BASE_URL=http://localhost:3000`. Error % mostly reflects failed checkouts when DynamoDB is not configured.
+Same machine as the app, `BASE_URL=http://localhost:3000`. Error % mostly reflects failed checkouts when **SQS** (or credentials) is not configured; run **`worker.js`** as well if you want orders written to DynamoDB after enqueue.
 
 **Steady load** — 20 VUs for 45 seconds:
 

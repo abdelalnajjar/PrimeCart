@@ -3,3 +3,7 @@
 aws_region      = "us-west-1"
 environment     = "primecart"
 instance_type   = "t2.micro" # or t3.micro if your Free Tier lists it
+
+# Optional: open TCP 22 from your IP for EC2 Instance Connect (browser SSH) or ssh.
+# Replace with your public IP (search "what is my ip"). Leave unset for no SSH rule.
+# ssh_ingress_cidrs = ["203.0.113.10/32"]

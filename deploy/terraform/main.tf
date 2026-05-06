@@ -42,6 +42,10 @@ resource "aws_dynamodb_table" "orders" {
   }
 }
 
+resource "aws_sqs_queue" "orders" {
+  name = "${var.environment}-orders-queue"
+}
+
 resource "aws_s3_bucket" "app_artifacts" {
   bucket = "${var.environment}-app-${random_id.bucket_suffix.hex}"
 }
@@ -109,12 +113,28 @@ data "aws_iam_policy_document" "app_inline" {
     ]
     resources = [aws_dynamodb_table.orders.arn]
   }
+
+  statement {
+    sid = "OrdersQueue"
+    actions = [
+      "sqs:SendMessage",
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:GetQueueAttributes",
+    ]
+    resources = [aws_sqs_queue.orders.arn]
+  }
 }
 
 resource "aws_iam_role_policy" "app" {
   name   = "${var.environment}-app-inline"
   role   = aws_iam_role.app.id
   policy = data.aws_iam_policy_document.app_inline.json
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_core" {
+  role       = aws_iam_role.app.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
 resource "aws_iam_instance_profile" "app" {
@@ -135,6 +155,17 @@ resource "aws_security_group" "app" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  dynamic "ingress" {
+    for_each = length(var.ssh_ingress_cidrs) > 0 ? [1] : []
+    content {
+      description = "SSH optional Instance Connect or ssh client"
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      cidr_blocks = var.ssh_ingress_cidrs
+    }
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -153,10 +184,11 @@ resource "aws_instance" "app" {
 
   user_data = base64encode(
     templatefile("${path.module}/../bootstrap.sh", {
-      s3_bucket    = aws_s3_bucket.app_artifacts.bucket
-      s3_key       = aws_s3_object.app_zip.key
-      aws_region   = var.aws_region
-      orders_table = aws_dynamodb_table.orders.name
+      s3_bucket        = aws_s3_bucket.app_artifacts.bucket
+      s3_key           = aws_s3_object.app_zip.key
+      aws_region       = var.aws_region
+      orders_table     = aws_dynamodb_table.orders.name
+      orders_queue_url = aws_sqs_queue.orders.url
     })
   )
 

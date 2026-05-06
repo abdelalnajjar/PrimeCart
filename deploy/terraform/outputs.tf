@@ -8,9 +8,19 @@ output "app_public_ip" {
   value       = aws_instance.app.public_ip
 }
 
+output "instance_id" {
+  description = "EC2 instance id (for console log / Systems Manager troubleshooting)."
+  value       = aws_instance.app.id
+}
+
 output "orders_table_name" {
   description = "DynamoDB orders table; set ORDERS_TABLE_NAME for local runs against this environment."
   value       = aws_dynamodb_table.orders.name
+}
+
+output "orders_queue_url" {
+  description = "SQS queue URL; EC2 user-data sets ORDERS_QUEUE_URL to this value."
+  value       = aws_sqs_queue.orders.url
 }
 
 output "app_artifact_bucket" {

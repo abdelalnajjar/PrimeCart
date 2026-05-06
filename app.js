@@ -10,7 +10,6 @@ const PORT = process.env.PORT || 3000;
 // import AWS SDK
 const { DynamoDBClient, DescribeTableCommand } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, PutCommand } = require("@aws-sdk/lib-dynamodb");
-const { v4: uuidv4 } = require("uuid");
 //SQS
 const { SQSClient, SendMessageCommand } = require("@aws-sdk/client-sqs");
 
@@ -129,7 +128,7 @@ app.post("/orders", async (req, res) => {
       });
     }
 
-    const orderId = req.body.orderId || uuidv4();
+    const orderId = req.body.orderId || crypto.randomUUID();
 
     const order = {
       orderId,
