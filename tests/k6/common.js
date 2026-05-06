@@ -60,14 +60,21 @@ export function submitOrder(base, product) {
     quantity: "1",
   });
 
+  // App returns 302 to GET /confirmation/...; k6 follows redirects and returns the final response.
   const res = http.post(`${base}/orders`, body, {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    redirects: 10,
   });
 
+  const html = String(res.body || "");
+  const location = String(res.headers.Location || "");
   check(res, {
-    "order 201": (r) => r.status === 201,
-    "order confirmation html": (r) =>
-      r.status === 201 && String(r.body).includes("Order"),
+    "checkout success (confirmation page or redirect)":
+      (r) =>
+        (r.status === 200 && html.includes("Order Received")) ||
+        (r.status >= 300 &&
+          r.status < 400 &&
+          location.includes("/confirmation")),
   });
   return res;
 }
