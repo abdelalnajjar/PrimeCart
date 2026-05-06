@@ -132,6 +132,11 @@ resource "aws_iam_role_policy" "app" {
   policy = data.aws_iam_policy_document.app_inline.json
 }
 
+resource "aws_iam_role_policy_attachment" "ssm_core" {
+  role       = aws_iam_role.app.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
 resource "aws_iam_instance_profile" "app" {
   name = "${var.environment}-ec2-profile"
   role = aws_iam_role.app.name
@@ -148,6 +153,17 @@ resource "aws_security_group" "app" {
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  dynamic "ingress" {
+    for_each = length(var.ssh_ingress_cidrs) > 0 ? [1] : []
+    content {
+      description = "SSH optional Instance Connect or ssh client"
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      cidr_blocks = var.ssh_ingress_cidrs
+    }
   }
 
   egress {

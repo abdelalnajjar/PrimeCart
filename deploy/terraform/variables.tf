@@ -15,3 +15,9 @@ variable "instance_type" {
   description = "EC2 type. t2.micro is the usual 12-month Free Tier size (750 hrs/mo); t3.micro is also often included—confirm in your account’s Free Tier page."
   default     = "t2.micro"
 }
+
+variable "ssh_ingress_cidrs" {
+  type        = list(string)
+  description = "Optional CIDRs allowed on TCP 22 (SSH). Required for EC2 Instance Connect in the browser unless you use Session Manager. Example: [\"203.0.113.10/32\"] (your public IP). Empty = no SSH ingress."
+  default     = []
+}

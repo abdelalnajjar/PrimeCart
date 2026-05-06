@@ -24,8 +24,25 @@ In **`app.js`** and **`worker.js`**, if `ORDERS_QUEUE_URL` is **not** set (typic
 | `aws_sqs_queue.orders` | Standard queue **`${var.environment}-orders-queue`**; checkout sends messages here; worker consumes and writes to DynamoDB |
 | `aws_s3_bucket.app_artifacts` + `aws_s3_object.app_zip` | **Private** bucket; holds **one zip** of the repo (`releases/app.zip`) for EC2 to `aws s3 cp` on boot |
 | IAM role + instance profile | **`s3:GetObject`** on that zip only; **`dynamodb:PutItem`** and **`dynamodb:DescribeTable`** on the orders table ARN; **`sqs:SendMessage`**, **`sqs:ReceiveMessage`**, **`sqs:DeleteMessage`**, **`sqs:GetQueueAttributes`** on the orders queue ARN |
+| **`AmazonSSMManagedInstanceCore`** (attached) | Lets you use **Session Manager** in the EC2 console without opening port **22** |
 
 Instance metadata: **IMDSv2 required** (`http_tokens = "required"`).
+
+## EC2 console “Connect” (SSH vs Session Manager)
+
+The security group only allows **HTTP (80)** from the internet by default. **SSH (22) is not open**, so **EC2 Instance Connect** (browser SSH) and **SSH to the public IP** fail with “Error establishing SSH connection” until you allow port 22.
+
+**Option A — Session Manager (recommended after `terraform apply`)**  
+Terraform attaches **`AmazonSSMManagedInstanceCore`**. In the EC2 console: select the instance → **Connect** → **Session Manager** tab → **Connect**. No SSH key and **no port 22** rule required. If **Session Manager** is greyed out, wait a few minutes for the agent to register, then refresh.
+
+**Option B — Open SSH from your IP**  
+Set in `terraform.tfvars` (use your real public IP, e.g. from a “what is my IP” search):
+
+```hcl
+ssh_ingress_cidrs = ["YOUR.PUBLIC.IP.ADDRESS/32"]
+```
+
+Run **`terraform apply`** again, then use **Connect → EC2 Instance Connect** or your SSH client on port **22**.
 
 ## What is not in this Terraform
 
@@ -56,7 +73,7 @@ flowchart LR
 
 ## Configuration
 
-Optional: copy `terraform.tfvars.example` to `terraform.tfvars` and set `aws_region`, `environment`, `instance_type`.
+Optional: copy `terraform.tfvars.example` to `terraform.tfvars` and set `aws_region`, `environment`, `instance_type`, and optionally **`ssh_ingress_cidrs`** if you need browser SSH / port 22 (see **EC2 console “Connect”** above).
 
 On the instance, `/etc/sysconfig/primecart` sets **`AWS_REGION`**, **`ORDERS_TABLE_NAME`** (to the Terraform table name), **`ORDERS_QUEUE_URL`** (to the Terraform queue URL), and **`PORT=80`** so the app matches the provisioned resources (unlike local defaults in `app.js`, which use table name `orders` unless overridden).
 
@@ -68,7 +85,30 @@ terraform init
 terraform apply
 ```
 
-Cold start (user-data: install packages, download zip, `npm ci`, start service) often takes **a few minutes** before HTTP responds.
+Cold start (user-data: install packages, download zip, `npm ci`, start service) often takes **a few minutes** before HTTP responds. On **`t2.micro`**, **`npm ci`** alone can take **10–20+ minutes** of CPU time; until it finishes, **port 80 has no listener**, so the browser may sit on **“loading”** or eventually time out.
+
+### If `app_url` never loads
+
+1. **Wait longer**, then probe (use your `app_url` / public IP from `terraform output`):
+
+```bash
+cd deploy/terraform
+curl -sS -m 10 "$(terraform output -raw app_url)/health"
+```
+
+2. **Read the instance console output** (user-data / bootstrap log). This needs the [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) and the same credentials as Terraform:
+
+```bash
+cd deploy/terraform
+aws ec2 get-console-output \
+  --instance-id "$(terraform output -raw instance_id)" \
+  --latest \
+  --output text
+```
+
+Look for errors after `cloud-init` runs the script (failed `dnf`, `aws s3 cp`, `npm ci`, or `systemctl`).
+
+3. In the **EC2 console**, open the instance → **Status checks** and **Monitoring**; if user-data failed, fix the cause then **`terraform apply`** again (changing the zip or bootstrap often **replaces** the instance via `replace_triggered_by`).
 
 ```bash
 cd deploy/terraform
@@ -83,6 +123,7 @@ After `terraform apply`, useful outputs include:
 | ------ | ------- |
 | `app_url` | `http://<instance-public-dns>` (port 80) |
 | `app_public_ip` | Instance public IPv4 |
+| `instance_id` | EC2 id for `get-console-output` / console troubleshooting |
 | `orders_table_name` | DynamoDB table name to use for local testing against the same account (with matching credentials) |
 | `orders_queue_url` | SQS queue URL; set `ORDERS_QUEUE_URL` locally if you want to use the same queue as the deployed stack |
 | `app_artifact_bucket` | S3 bucket containing the deployment zip |
