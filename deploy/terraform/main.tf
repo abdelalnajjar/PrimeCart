@@ -42,6 +42,10 @@ resource "aws_dynamodb_table" "orders" {
   }
 }
 
+resource "aws_sqs_queue" "orders" {
+  name = "${var.environment}-orders-queue"
+}
+
 resource "aws_s3_bucket" "app_artifacts" {
   bucket = "${var.environment}-app-${random_id.bucket_suffix.hex}"
 }
@@ -109,6 +113,17 @@ data "aws_iam_policy_document" "app_inline" {
     ]
     resources = [aws_dynamodb_table.orders.arn]
   }
+
+  statement {
+    sid = "OrdersQueue"
+    actions = [
+      "sqs:SendMessage",
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:GetQueueAttributes",
+    ]
+    resources = [aws_sqs_queue.orders.arn]
+  }
 }
 
 resource "aws_iam_role_policy" "app" {
@@ -153,10 +168,11 @@ resource "aws_instance" "app" {
 
   user_data = base64encode(
     templatefile("${path.module}/../bootstrap.sh", {
-      s3_bucket    = aws_s3_bucket.app_artifacts.bucket
-      s3_key       = aws_s3_object.app_zip.key
-      aws_region   = var.aws_region
-      orders_table = aws_dynamodb_table.orders.name
+      s3_bucket        = aws_s3_bucket.app_artifacts.bucket
+      s3_key           = aws_s3_object.app_zip.key
+      aws_region       = var.aws_region
+      orders_table     = aws_dynamodb_table.orders.name
+      orders_queue_url = aws_sqs_queue.orders.url
     })
   )
 

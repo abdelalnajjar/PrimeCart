@@ -1,6 +1,6 @@
 # AWS deploy (Terraform)
 
-Single-instance stack in the **default VPC**: EC2 runs the Node app on **port 80**, persists orders to **DynamoDB**, and on **first boot only** downloads the app from a **private S3** artifact bucket. There is **no** Application Load Balancer, **no** Auto Scaling Group, and **no** SQS in this configuration.
+Single-instance stack in the **default VPC**: EC2 runs the Node app on **port 80** and a **worker** that drains an **SQS** queue into **DynamoDB**. Checkout enqueues orders to SQS; the worker persists them to the table. On **first boot only**, the instance downloads the app from a **private S3** artifact bucket. There is **no** Application Load Balancer and **no** Auto Scaling Group in this configuration.
 
 ## S3 caveat (product images vs deployment)
 
@@ -8,40 +8,44 @@ Single-instance stack in the **default VPC**: EC2 runs the Node app on **port 80
 
 The **S3 bucket Terraform creates** is **only** for **automating deployment**: a private bucket holding a **zip of the app** so EC2 can download and unpack it on first boot. Browsers load catalog images from the URLs in `products.json`, not from the Terraform artifact bucket.
 
+## SQS and local defaults
+
+Terraform creates an **`${var.environment}-orders-queue`** SQS queue and writes its URL into **`ORDERS_QUEUE_URL`** on the instance (`/etc/sysconfig/primecart`).
+
+In **`app.js`** and **`worker.js`**, if `ORDERS_QUEUE_URL` is **not** set (typical local run), the code falls back to a **hard-coded default queue URL** in another account. That keeps existing local behavior unchanged. **Deployed EC2** always sets `ORDERS_QUEUE_URL` from Terraform, so the web app and worker use the queue in **your** account.
+
 ## What Terraform creates
 
 | Resource | Purpose |
 | -------- | ------- |
-| `aws_instance.app` | Amazon Linux 2023, Node from user-data (`bootstrap.sh`), systemd unit `primecart.service` |
+| `aws_instance.app` | Amazon Linux 2023, Node from user-data (`bootstrap.sh`), systemd units **`primecart.service`** (`app.js`) and **`primecart-worker.service`** (`worker.js`) |
 | `aws_security_group.app` | Inbound **TCP 80** from `0.0.0.0/0`; unrestricted egress |
 | `aws_dynamodb_table.orders` | Table name **`${var.environment}-orders`** (default `primecart-orders`), billing **PAY_PER_REQUEST**, partition key **`orderId`** (string) |
+| `aws_sqs_queue.orders` | Standard queue **`${var.environment}-orders-queue`**; checkout sends messages here; worker consumes and writes to DynamoDB |
 | `aws_s3_bucket.app_artifacts` + `aws_s3_object.app_zip` | **Private** bucket; holds **one zip** of the repo (`releases/app.zip`) for EC2 to `aws s3 cp` on boot |
-| IAM role + instance profile | **`s3:GetObject`** on that zip only; **`dynamodb:PutItem`** and **`dynamodb:DescribeTable`** on the orders table ARN |
+| IAM role + instance profile | **`s3:GetObject`** on that zip only; **`dynamodb:PutItem`** and **`dynamodb:DescribeTable`** on the orders table ARN; **`sqs:SendMessage`**, **`sqs:ReceiveMessage`**, **`sqs:DeleteMessage`**, **`sqs:GetQueueAttributes`** on the orders queue ARN |
 
 Instance metadata: **IMDSv2 required** (`http_tokens = "required"`).
 
 ## What is not in this Terraform
 
-- **ALB / NLB**, **Auto Scaling Group**, **SQS**, **CloudWatch** dashboards/alarms (not defined here).
+- **ALB / NLB**, **Auto Scaling Group**, **CloudWatch** dashboards/alarms (not defined here).
 - **Product images:** the catalog in `data/products.json` uses **separate** public S3 object URLs. That image bucket is **not** created by this module; only the **deployment zip** bucket is.
 
 ## Runtime vs first boot
 
-- **Shoppers:** browser → EC2 public DNS/IP on **HTTP** → Express/EJS; checkout **`POST /orders`** → DynamoDB.
-- **First boot:** EC2 user-data runs `bootstrap.sh` → **`GetObject`** on the artifact zip → `npm ci` → start `app.js`. The app does **not** read product images from the artifact bucket; it uses URLs in `products.json`.
+- **Shoppers:** browser → EC2 public DNS/IP on **HTTP** → Express/EJS; checkout **`POST /orders`** → **SQS**; **`worker.js`** → **DynamoDB**.
+- **First boot:** EC2 user-data runs `bootstrap.sh` → **`GetObject`** on the artifact zip → `npm ci` → start **`primecart.service`** and **`primecart-worker.service`**. The app does **not** read product images from the artifact bucket; it uses URLs in `products.json`.
 
 ## Diagram
 
 ```mermaid
 flowchart LR
-  subgraph Internet
-    C[Client]
-  end
-  subgraph AWS["AWS default VPC"]
-    C -->|HTTP 80| EC2["EC2\nAL2023 + Node"]
-    EC2 --> DDB[(DynamoDB\norders table)]
-    EC2 -.->|first boot only| S3zip[(S3 private\napp zip)]
-  end
+  C[Client] -->|HTTP_80| App[app_js_on_EC2]
+  App -->|SendMessage| Q[(SQS_orders_queue)]
+  Worker[worker_js_on_EC2] -->|Receive_Delete| Q
+  Worker -->|PutItem| DDB[(DynamoDB_orders)]
+  App -.->|first_boot_zip| S3zip[(S3_app_artifact)]
 ```
 
 ## Requirements
@@ -54,7 +58,7 @@ flowchart LR
 
 Optional: copy `terraform.tfvars.example` to `terraform.tfvars` and set `aws_region`, `environment`, `instance_type`.
 
-On the instance, `/etc/sysconfig/primecart` sets **`AWS_REGION`**, **`ORDERS_TABLE_NAME`** (to the Terraform table name), and **`PORT=80`** so the app matches the provisioned table (unlike local defaults in `app.js`, which use table name `orders` unless overridden).
+On the instance, `/etc/sysconfig/primecart` sets **`AWS_REGION`**, **`ORDERS_TABLE_NAME`** (to the Terraform table name), **`ORDERS_QUEUE_URL`** (to the Terraform queue URL), and **`PORT=80`** so the app matches the provisioned resources (unlike local defaults in `app.js`, which use table name `orders` unless overridden).
 
 ## Apply / destroy
 
@@ -80,6 +84,7 @@ After `terraform apply`, useful outputs include:
 | `app_url` | `http://<instance-public-dns>` (port 80) |
 | `app_public_ip` | Instance public IPv4 |
 | `orders_table_name` | DynamoDB table name to use for local testing against the same account (with matching credentials) |
+| `orders_queue_url` | SQS queue URL; set `ORDERS_QUEUE_URL` locally if you want to use the same queue as the deployed stack |
 | `app_artifact_bucket` | S3 bucket containing the deployment zip |
 | `app_artifact_key` | Object key (`releases/app.zip`) |
 
@@ -99,6 +104,7 @@ Almost always **EC2 run hours** plus the **EBS root volume** attached to that in
 | **EBS (root disk)** | **~$1–4** | Charged for **allocated GiB** while the volume exists (even if the instance is **stopped**). Size follows the AMI (commonly on the order of **8–30 GiB** for Amazon Linux 2023). See [EBS pricing](https://aws.amazon.com/ebs/pricing/). |
 | **DynamoDB** (on-demand table, light traffic) | **~$0–1** | Demo / coursework traffic is usually negligible vs EC2. |
 | **S3** (deployment zip + versioning if enabled) | **~$0–0.25** | One small object; occasional full instance refresh downloads. |
+| **SQS** (light traffic) | **~$0** | Usually negligible at demo scale. |
 
 **Combined:** about **US$12–18/month** if the instance runs continuously with default-ish settings, with **EC2 + EBS** making up almost all of it. **`t3.micro`** is in a similar ballpark but slightly higher on-demand—override in `terraform.tfvars` and re-check the calculator.
 

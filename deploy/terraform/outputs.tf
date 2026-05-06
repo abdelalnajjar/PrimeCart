@@ -13,6 +13,11 @@ output "orders_table_name" {
   value       = aws_dynamodb_table.orders.name
 }
 
+output "orders_queue_url" {
+  description = "SQS queue URL; EC2 user-data sets ORDERS_QUEUE_URL to this value."
+  value       = aws_sqs_queue.orders.url
+}
+
 output "app_artifact_bucket" {
   description = "Private S3 bucket holding the deployment zip (not product images)."
   value       = aws_s3_bucket.app_artifacts.bucket
