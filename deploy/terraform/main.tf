@@ -15,12 +15,32 @@ data "aws_subnet" "by_id" {
 }
 
 locals {
-  # Prefer a subnet that maps a public IP by default (typical default-VPC public subnets).
-  public_subnet_candidates = [
-    for id in data.aws_subnets.default.ids : id
-    if data.aws_subnet.by_id[id].map_public_ip_on_launch
-  ]
-  instance_subnet_id = length(local.public_subnet_candidates) > 0 ? local.public_subnet_candidates[0] : sort(tolist(data.aws_subnets.default.ids))[0]
+  bootstrap_hash = filesha256("${path.module}/../bootstrap.sh")
+
+  # One subnet per AZ among subnets that map a public IP (typical default-VPC public subnets).
+  public_subnet_by_az = merge([
+    for id in data.aws_subnets.default.ids :
+    data.aws_subnet.by_id[id].map_public_ip_on_launch ? {
+      (data.aws_subnet.by_id[id].availability_zone) = id
+    } : {}
+  ]...)
+
+  # Fallback: any subnet per AZ if fewer than two public subnets (unusual).
+  any_subnet_by_az = merge([
+    for id in data.aws_subnets.default.ids :
+    { (data.aws_subnet.by_id[id].availability_zone) = id }
+  ]...)
+
+  public_azs_sorted = sort(keys(local.public_subnet_by_az))
+  any_azs_sorted    = sort(keys(local.any_subnet_by_az))
+
+  alb_subnet_ids = length(local.public_azs_sorted) >= 2 ? [
+    local.public_subnet_by_az[local.public_azs_sorted[0]],
+    local.public_subnet_by_az[local.public_azs_sorted[1]],
+    ] : (length(local.any_azs_sorted) >= 2 ? [
+      local.any_subnet_by_az[local.any_azs_sorted[0]],
+      local.any_subnet_by_az[local.any_azs_sorted[1]],
+  ] : [])
 }
 
 data "aws_ssm_parameter" "al2023_ami" {
@@ -81,6 +101,16 @@ resource "aws_s3_object" "app_zip" {
   etag   = data.archive_file.app_zip.output_md5
 }
 
+resource "aws_cloudwatch_log_group" "app" {
+  name              = "/${var.environment}/primecart-app"
+  retention_in_days = var.log_retention_days
+}
+
+resource "aws_cloudwatch_log_group" "worker" {
+  name              = "/${var.environment}/primecart-worker"
+  retention_in_days = var.log_retention_days
+}
+
 data "aws_iam_policy_document" "ec2_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -124,6 +154,19 @@ data "aws_iam_policy_document" "app_inline" {
     ]
     resources = [aws_sqs_queue.orders.arn]
   }
+
+  statement {
+    sid = "AppLogs"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+      "logs:DescribeLogStreams",
+    ]
+    resources = [
+      "${aws_cloudwatch_log_group.app.arn}:*",
+      "${aws_cloudwatch_log_group.worker.arn}:*",
+    ]
+  }
 }
 
 resource "aws_iam_role_policy" "app" {
@@ -142,9 +185,9 @@ resource "aws_iam_instance_profile" "app" {
   role = aws_iam_role.app.name
 }
 
-resource "aws_security_group" "app" {
-  name        = "${var.environment}-app-sg"
-  description = "Single EC2: HTTP for PrimeCart (free-tier friendly, no ALB)"
+resource "aws_security_group" "alb" {
+  name        = "${var.environment}-alb-sg"
+  description = "ALB: HTTP from internet for PrimeCart"
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
@@ -153,6 +196,31 @@ resource "aws_security_group" "app" {
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "app" {
+  name_prefix = "${var.environment}-app-"
+  description = "ASG instances: HTTP from ALB only; egress all"
+  vpc_id      = data.aws_vpc.default.id
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  ingress {
+    description     = "HTTP from ALB"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
   }
 
   dynamic "ingress" {
@@ -174,13 +242,62 @@ resource "aws_security_group" "app" {
   }
 }
 
-resource "aws_instance" "app" {
-  ami                         = data.aws_ssm_parameter.al2023_ami.value
-  instance_type               = var.instance_type
-  subnet_id                   = local.instance_subnet_id
-  vpc_security_group_ids      = [aws_security_group.app.id]
-  iam_instance_profile        = aws_iam_instance_profile.app.name
-  associate_public_ip_address = true
+resource "aws_lb" "app" {
+  name               = "${var.environment}-alb"
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = local.alb_subnet_ids
+
+  idle_timeout = var.alb_idle_timeout
+}
+
+resource "aws_lb_target_group" "app" {
+  name     = "${var.environment}-tg"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = data.aws_vpc.default.id
+
+  health_check {
+    enabled             = true
+    path                = "/health"
+    healthy_threshold   = var.tg_health_check_healthy_threshold
+    unhealthy_threshold = var.tg_health_check_unhealthy_threshold
+    timeout             = var.tg_health_check_timeout
+    interval            = var.tg_health_check_interval
+    matcher             = var.tg_health_check_matcher
+  }
+
+  deregistration_delay = 30
+
+  lifecycle {
+    precondition {
+      condition     = var.tg_health_check_timeout < var.tg_health_check_interval
+      error_message = "tg_health_check_timeout must be less than tg_health_check_interval."
+    }
+  }
+}
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.app.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
+}
+
+resource "aws_launch_template" "app" {
+  name_prefix   = "${var.environment}-app-"
+  image_id      = data.aws_ssm_parameter.al2023_ami.value
+  instance_type = var.instance_type
+
+  iam_instance_profile {
+    name = aws_iam_instance_profile.app.name
+  }
+
+  vpc_security_group_ids = [aws_security_group.app.id]
 
   user_data = base64encode(
     templatefile("${path.module}/../bootstrap.sh", {
@@ -189,6 +306,11 @@ resource "aws_instance" "app" {
       aws_region       = var.aws_region
       orders_table     = aws_dynamodb_table.orders.name
       orders_queue_url = aws_sqs_queue.orders.url
+      log_group_app    = aws_cloudwatch_log_group.app.name
+      log_group_worker = aws_cloudwatch_log_group.worker.name
+      # Use archive MD5 in user-data (stable within an apply). S3 etag can change mid-apply and break saved plans.
+      app_zip_md5    = data.archive_file.app_zip.output_md5
+      bootstrap_hash = local.bootstrap_hash
     })
   )
 
@@ -197,13 +319,137 @@ resource "aws_instance" "app" {
     http_tokens   = "required"
   }
 
-  depends_on = [aws_s3_object.app_zip]
-
-  tags = {
-    Name = "${var.environment}-app"
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "${var.environment}-app"
+    }
   }
 
   lifecycle {
-    replace_triggered_by = [aws_s3_object.app_zip.etag]
+    create_before_destroy = true
+  }
+
+  depends_on = [aws_s3_object.app_zip]
+}
+
+resource "aws_autoscaling_group" "app" {
+  name                      = "${var.environment}-asg"
+  vpc_zone_identifier       = local.alb_subnet_ids
+  desired_capacity          = var.asg_desired_capacity
+  min_size                  = var.asg_min_size
+  max_size                  = var.asg_max_size
+  health_check_type         = "ELB"
+  health_check_grace_period = var.asg_health_check_grace_period
+  default_cooldown          = var.asg_default_cooldown
+
+  launch_template {
+    id      = aws_launch_template.app.id
+    version = "$Latest"
+  }
+
+  target_group_arns = [aws_lb_target_group.app.arn]
+
+  tag {
+    key                 = "Name"
+    value               = "${var.environment}-app"
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "AppArtifactZipMd5"
+    value               = data.archive_file.app_zip.output_md5
+    propagate_at_launch = true
+  }
+
+  instance_refresh {
+    strategy = "Rolling"
+    preferences {
+      min_healthy_percentage = 50
+      instance_warmup        = var.asg_instance_warmup
+    }
+    triggers = ["tag"]
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(local.alb_subnet_ids) >= 2
+      error_message = "This stack needs at least two subnets in different Availability Zones (default VPC usually satisfies this). Add subnets or use a VPC with subnets per AZ."
+    }
+
+    precondition {
+      condition     = var.asg_desired_capacity >= var.asg_min_size && var.asg_desired_capacity <= var.asg_max_size
+      error_message = "asg_desired_capacity must be between asg_min_size and asg_max_size (inclusive)."
+    }
+  }
+
+  depends_on = [aws_lb_listener.http]
+}
+
+resource "aws_autoscaling_policy" "cpu_target_tracking" {
+  count = var.enable_asg_cpu_target_tracking ? 1 : 0
+
+  name                   = "${var.environment}-cpu-target-tracking"
+  autoscaling_group_name = aws_autoscaling_group.app.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+
+    target_value = var.asg_cpu_target_value
+  }
+}
+
+resource "aws_autoscaling_policy" "alb_request_target_tracking" {
+  count = var.enable_alb_request_target_tracking ? 1 : 0
+
+  name                   = "${var.environment}-alb-requests-target-tracking"
+  autoscaling_group_name = aws_autoscaling_group.app.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ALBRequestCountPerTarget"
+      resource_label         = "${aws_lb.app.arn_suffix}/${aws_lb_target_group.app.arn_suffix}"
+    }
+
+    target_value = var.alb_request_target_value
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "tg_unhealthy" {
+  alarm_name          = "${var.environment}-unhealthy-targets"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "UnHealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "Fires when the ALB marks one or more targets unhealthy (good for demo: stop app, break health check)."
+
+  dimensions = {
+    LoadBalancer = aws_lb.app.arn_suffix
+    TargetGroup  = aws_lb_target_group.app.arn_suffix
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "asg_cpu_high" {
+  alarm_name          = "${var.environment}-asg-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = var.asg_cpu_alarm_evaluation_periods
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = var.asg_cpu_alarm_period
+  statistic           = "Average"
+  threshold           = var.asg_cpu_alarm_threshold
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "Average CPU across ASG instances (use k6 or ab to stress for a load demo)."
+
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.app.name
   }
 }

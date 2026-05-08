@@ -15,8 +15,7 @@ PrimeCart is a cloud-based e-commerce application that supports guest checkout a
 * **Backend:** Node.js, Express
 * **Frontend:** EJS (server-rendered views)
 * **Styling:** Custom CSS (minimal, modern UI)
-* **Cloud (Terraform, current):** EC2 (single instance), DynamoDB (orders), private S3 (app zip for bootstrapping), IAM instance profile — see `deploy/README.md`
-* **Cloud (not in Terraform yet):** ALB, Auto Scaling Group, SQS, CloudWatch beyond defaults
+* **Cloud (Terraform, current):** Application Load Balancer, Auto Scaling Group (multi-AZ), EC2 + systemd app/worker, DynamoDB (orders), SQS, private S3 (app zip), CloudWatch Logs for app + worker, basic alarms — see `deploy/README.md`
 
 ---
 
@@ -149,31 +148,23 @@ See `data/products.json` (e.g. AirPods Pro 3, Galaxy Buds4 Pro, Galaxy XR).
 ## Future Enhancements (Cloud Integration)
 
 * **Product catalog in DynamoDB** (today: JSON file; **orders** already use DynamoDB in AWS/local when configured)
-* **Checkout queue:** AWS SQS
-* **Auto-scaling:** EC2 + Auto Scaling Group (behind load balancer)
-* **Load balancing:** Application Load Balancer (ALB) in front of multiple instances
-* **Monitoring:** CloudWatch dashboards/alarms
+* **Richer monitoring:** CloudWatch dashboards, SNS on alarms, X-Ray tracing
 
 ---
 
 ## Architecture
 
-**Deployed today (Terraform)** — single EC2, no load balancer:
+**Deployed today (Terraform)** — ALB, ASG across two AZs, SQS checkout buffer, CloudWatch Logs for app + worker:
 
 ```
-Client → EC2:80 (Express) → DynamoDB (orders)
-         first boot: EC2 reads private S3 (app zip only)
+Client → ALB:80 → EC2 pool (ASG) → Express
+                         ↓ POST /orders
+                       SQS → worker on each instance → DynamoDB (orders)
+         first boot per instance: private S3 (app zip only)
+         logs: CloudWatch agent → log groups
 ```
 
 Catalog images: HTTPS URLs in `products.json` pointing at objects **already uploaded** to a **separate** S3 bucket (not created by Terraform). The S3 bucket in `deploy/terraform` exists **only** to host the **deployment zip** for EC2 bootstrap—see `deploy/README.md` (“S3 caveat”).
-
-**Target / coursework roadmap** (not in current Terraform):
-
-```
-Client → ALB → EC2 pool (ASG) → DynamoDB
-                      ↓
-                    SQS (checkout buffer)
-```
 
 ---
 
@@ -191,7 +182,7 @@ Client → ALB → EC2 pool (ASG) → DynamoDB
 * Local Node.js app ✅
 * UI with product cards ✅
 * GitHub repo setup ✅
-* Cloud deployment ⏳ (in progress)
+* Cloud deployment (ALB + ASG + Terraform) ✅ — see `deploy/README.md`
 
 ---
 

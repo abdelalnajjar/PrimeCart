@@ -7,3 +7,30 @@ instance_type   = "t2.micro" # or t3.micro if your Free Tier lists it
 # Optional: open TCP 22 from your IP for EC2 Instance Connect (browser SSH) or ssh.
 # Replace with your public IP (search "what is my ip"). Leave unset for no SSH rule.
 # ssh_ingress_cidrs = ["203.0.113.10/32"]
+
+# Optional ASG / logging / demo tuning (defaults favor visible scaling + alarms under light k6 load).
+# asg_min_size                   = 2
+# asg_max_size                   = 6
+# asg_desired_capacity           = 2
+# asg_health_check_grace_period  = 600
+# asg_instance_warmup            = 300
+# asg_default_cooldown           = 90
+# log_retention_days             = 14
+#
+# CPU demo alarm (fires sooner than coursework defaults used before)
+# asg_cpu_alarm_threshold        = 35
+# asg_cpu_alarm_period           = 60
+# asg_cpu_alarm_evaluation_periods = 1
+#
+# Target tracking — both enabled by default; ASG uses the max desired capacity from each policy.
+# enable_asg_cpu_target_tracking = true
+# asg_cpu_target_value           = 12
+# enable_alb_request_target_tracking = true
+# alb_request_target_value       = 60
+#
+# ALB / target group (faster unhealthy detection for crash demo)
+# alb_idle_timeout               = 60
+# tg_health_check_interval       = 10
+# tg_health_check_timeout        = 5
+# tg_health_check_healthy_threshold   = 2
+# tg_health_check_unhealthy_threshold = 2
