@@ -27,6 +27,7 @@ In **`app.js`** and **`worker.js`**, if `ORDERS_QUEUE_URL` is unset locally, the
 | **S3 artifact bucket + object** | Private zip at `releases/app.zip` |
 | **IAM role + instance profile** | Artifact read, DynamoDB, SQS, **CloudWatch Logs** (`PutLogEvents` on the two log groups), **SSM** |
 | **`aws_cloudwatch_log_group`** ×2 | **`/${environment}/primecart-app`** and **`.../primecart-worker`** (stdout via file + agent) |
+| **`aws_autoscaling_policy`** | Target tracking on **ASG CPU** and **ALB RequestCountPerTarget** (both on by default; ASG applies the **maximum** desired capacity from active policies) |
 | **Metric alarms** (no SNS) | **UnHealthyHostCount** on the target group; **CPUUtilization** on the ASG (for load demos) |
 
 Instance metadata: **IMDSv2 required**.
@@ -83,7 +84,9 @@ flowchart LR
 
 ## Configuration
 
-Copy `terraform.tfvars.example` to `terraform.tfvars` and set `aws_region`, `environment`, `instance_type`, optional **`ssh_ingress_cidrs`**, and optional **ASG** / **log** / **alarm** tunables:
+Copy `terraform.tfvars.example` to `terraform.tfvars` and set `aws_region`, `environment`, `instance_type`, optional **`ssh_ingress_cidrs`**, and optional **ASG** / **log** / **alarm** tunables.
+
+**Demo-friendly defaults:** Terraform sets **lower** CPU and per-target request targets, **shorter** cooldowns, and **faster** ALB health checks so **modest k6** traffic and the **crash demo** show up clearly. That can **add EC2 hours** (more scale-out); for daily dev, consider raising `alb_request_target_value` / `asg_cpu_target_value` or setting `enable_alb_request_target_tracking = false`.
 
 | Variable | Default | Notes |
 | -------- | ------- | ----- |
@@ -91,9 +94,21 @@ Copy `terraform.tfvars.example` to `terraform.tfvars` and set `aws_region`, `env
 | `asg_max_size` | 6 | Ceiling for scale-out |
 | `asg_desired_capacity` | 2 | Must be between min and max |
 | `asg_health_check_grace_period` | 600 | Seconds before ELB health counts |
+| `asg_default_cooldown` | 90 | Cooldown between scaling activities (used with target-tracking policies) |
 | `asg_instance_warmup` | 300 | ASG instance refresh warmup |
 | `log_retention_days` | 14 | Both log groups |
-| `asg_cpu_alarm_threshold` | 50 | Average CPU % for demo alarm |
+| `asg_cpu_alarm_threshold` | 35 | Average CPU % for demo alarm |
+| `asg_cpu_alarm_period` | 60 | Alarm metric period (seconds) |
+| `asg_cpu_alarm_evaluation_periods` | 1 | Periods before alarm fires |
+| `enable_asg_cpu_target_tracking` | `true` | Auto scale from ASG average CPU |
+| `asg_cpu_target_value` | 12 | Lower → scale out sooner on CPU |
+| `enable_alb_request_target_tracking` | `true` | Scale from ALB requests/target/min |
+| `alb_request_target_value` | 60 | Lower → scale out with lighter HTTP load |
+| `alb_idle_timeout` | 60 | ALB idle timeout (seconds) |
+| `tg_health_check_interval` | 10 | Seconds between `/health` probes |
+| `tg_health_check_timeout` | 5 | Health check timeout (< interval) |
+| `tg_health_check_healthy_threshold` | 2 | Successes to mark healthy |
+| `tg_health_check_unhealthy_threshold` | 2 | Failures to mark unhealthy |
 
 ## Apply / destroy
 
@@ -102,6 +117,33 @@ cd deploy/terraform
 terraform init
 terraform apply
 ```
+
+## Verify dynamic auto scaling (rubric demo path)
+
+1. Default `terraform.tfvars` enables **both** CPU and ALB request target tracking. To rely on only one, set the other to `false` in `terraform.tfvars`.
+2. Apply Terraform and note the ASG name:
+
+```bash
+cd deploy/terraform
+terraform apply
+terraform output -raw autoscaling_group_name
+```
+
+3. Run load against the **ALB URL**:
+
+```bash
+BASE_URL="$(cd deploy/terraform && terraform output -raw app_url)" \
+k6 run tests/k6/spike.js
+```
+
+4. In AWS Console:
+   - **EC2 → Auto Scaling Groups → Activity** (scale-out/in events)
+   - **CloudWatch metrics** for `GroupDesiredCapacity` and `GroupInServiceInstances`
+   - Optional: `CPUUtilization` and ALB target `RequestCountPerTarget`
+
+5. Capture evidence for report:
+   - k6 throughput, P95/P99, error rate
+   - Time from overload period to new instance `InService` (scaling delay)
 
 ### If `app_url` never loads
 
@@ -157,9 +199,9 @@ Use these in a presentation or lab write-up; all are compatible with this stack.
 
 3. **Forced replacement** — In the console, **terminate** one instance. The ASG **launches** a replacement; traffic fails over to remaining instances during bootstrap.
 
-4. **Load / CPU** — Run k6 (see repo `tests/k6/`) with `BASE_URL=$(terraform output -raw app_url)`. Raise VUs until the **`...-asg-cpu-high`** alarm fires (tune **`asg_cpu_alarm_threshold`** down for a quicker demo).
+4. **Load / CPU** — Run k6 (see repo `tests/k6/`) with `BASE_URL=$(terraform output -raw app_url)`. Defaults use **`asg_cpu_alarm_threshold = 35`** and a **60s** alarm period so the **`...-asg-cpu-high`** alarm tends to fire under moderate load; lower **`asg_cpu_alarm_threshold`** in `terraform.tfvars` if you need an even quicker demo.
 
-5. **Scale out** — Temporarily set **`asg_desired_capacity`** (and **`asg_max_size`** if needed) higher, **`terraform apply`**, and show **more targets** behind the ALB sharing load.
+5. **Auto scale out/in** — Keep target tracking enabled and run k6 load; show **ASG activity history** and capacity metric changes without manually editing `asg_desired_capacity`.
 
 6. **Rolling deploy** — Change app code, **`terraform apply`** so the artifact zip changes; **instance refresh** rolls instances with **minimal healthy 50%** so the site stays partially available.
 

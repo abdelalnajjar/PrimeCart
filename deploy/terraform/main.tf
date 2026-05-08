@@ -248,7 +248,7 @@ resource "aws_lb" "app" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = local.alb_subnet_ids
 
-  idle_timeout = 60
+  idle_timeout = var.alb_idle_timeout
 }
 
 resource "aws_lb_target_group" "app" {
@@ -260,14 +260,21 @@ resource "aws_lb_target_group" "app" {
   health_check {
     enabled             = true
     path                = "/health"
-    healthy_threshold   = 2
-    unhealthy_threshold = 3
-    timeout             = 5
-    interval            = 30
-    matcher             = "200"
+    healthy_threshold   = var.tg_health_check_healthy_threshold
+    unhealthy_threshold = var.tg_health_check_unhealthy_threshold
+    timeout             = var.tg_health_check_timeout
+    interval            = var.tg_health_check_interval
+    matcher             = var.tg_health_check_matcher
   }
 
   deregistration_delay = 30
+
+  lifecycle {
+    precondition {
+      condition     = var.tg_health_check_timeout < var.tg_health_check_interval
+      error_message = "tg_health_check_timeout must be less than tg_health_check_interval."
+    }
+  }
 }
 
 resource "aws_lb_listener" "http" {
@@ -294,16 +301,16 @@ resource "aws_launch_template" "app" {
 
   user_data = base64encode(
     templatefile("${path.module}/../bootstrap.sh", {
-      s3_bucket         = aws_s3_bucket.app_artifacts.bucket
-      s3_key            = aws_s3_object.app_zip.key
-      aws_region        = var.aws_region
-      orders_table      = aws_dynamodb_table.orders.name
-      orders_queue_url  = aws_sqs_queue.orders.url
+      s3_bucket        = aws_s3_bucket.app_artifacts.bucket
+      s3_key           = aws_s3_object.app_zip.key
+      aws_region       = var.aws_region
+      orders_table     = aws_dynamodb_table.orders.name
+      orders_queue_url = aws_sqs_queue.orders.url
       log_group_app    = aws_cloudwatch_log_group.app.name
       log_group_worker = aws_cloudwatch_log_group.worker.name
       # Use archive MD5 in user-data (stable within an apply). S3 etag can change mid-apply and break saved plans.
-      app_zip_md5      = data.archive_file.app_zip.output_md5
-      bootstrap_hash   = local.bootstrap_hash
+      app_zip_md5    = data.archive_file.app_zip.output_md5
+      bootstrap_hash = local.bootstrap_hash
     })
   )
 
@@ -334,7 +341,7 @@ resource "aws_autoscaling_group" "app" {
   max_size                  = var.asg_max_size
   health_check_type         = "ELB"
   health_check_grace_period = var.asg_health_check_grace_period
-  default_cooldown          = 300
+  default_cooldown          = var.asg_default_cooldown
 
   launch_template {
     id      = aws_launch_template.app.id
@@ -379,6 +386,39 @@ resource "aws_autoscaling_group" "app" {
   depends_on = [aws_lb_listener.http]
 }
 
+resource "aws_autoscaling_policy" "cpu_target_tracking" {
+  count = var.enable_asg_cpu_target_tracking ? 1 : 0
+
+  name                   = "${var.environment}-cpu-target-tracking"
+  autoscaling_group_name = aws_autoscaling_group.app.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+
+    target_value = var.asg_cpu_target_value
+  }
+}
+
+resource "aws_autoscaling_policy" "alb_request_target_tracking" {
+  count = var.enable_alb_request_target_tracking ? 1 : 0
+
+  name                   = "${var.environment}-alb-requests-target-tracking"
+  autoscaling_group_name = aws_autoscaling_group.app.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ALBRequestCountPerTarget"
+      resource_label         = "${aws_lb.app.arn_suffix}/${aws_lb_target_group.app.arn_suffix}"
+    }
+
+    target_value = var.alb_request_target_value
+  }
+}
+
 resource "aws_cloudwatch_metric_alarm" "tg_unhealthy" {
   alarm_name          = "${var.environment}-unhealthy-targets"
   comparison_operator = "GreaterThanThreshold"
@@ -393,17 +433,17 @@ resource "aws_cloudwatch_metric_alarm" "tg_unhealthy" {
 
   dimensions = {
     LoadBalancer = aws_lb.app.arn_suffix
-    TargetGroup = aws_lb_target_group.app.arn_suffix
+    TargetGroup  = aws_lb_target_group.app.arn_suffix
   }
 }
 
 resource "aws_cloudwatch_metric_alarm" "asg_cpu_high" {
   alarm_name          = "${var.environment}-asg-cpu-high"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 2
+  evaluation_periods  = var.asg_cpu_alarm_evaluation_periods
   metric_name         = "CPUUtilization"
   namespace           = "AWS/EC2"
-  period              = 120
+  period              = var.asg_cpu_alarm_period
   statistic           = "Average"
   threshold           = var.asg_cpu_alarm_threshold
   treat_missing_data  = "notBreaching"
