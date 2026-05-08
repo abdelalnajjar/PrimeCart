@@ -2,7 +2,6 @@ const express = require("express");
 const path = require("path");
 require("dotenv").config();
 const crypto = require("crypto");
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -18,8 +17,6 @@ const client = new DynamoDBClient({
   region: process.env.AWS_REGION || "us-west-1"
 });
 const docClient = DynamoDBDocumentClient.from(client);
-
-
 // Initialize SQS client to send and receive messages from the orders queue
 const sqsClient = new SQSClient({
   region: process.env.AWS_REGION || "us-west-1"
@@ -29,11 +26,10 @@ const ORDERS_QUEUE_URL =
   process.env.ORDERS_QUEUE_URL ||
   "https://sqs.us-west-1.amazonaws.com/774676933701/primecart-orders-queue";
 
-
 // Load product data
 const products = require("./data/products.json");
 
-// Middleware
+// Middleware to parse incoming request bodies (form data and JSON)
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
