@@ -323,20 +323,20 @@ Cost scales with ASG scale-out events. During idle periods, the system runs at m
 
 ### Yingyu Gu
 
-* Built the guest checkout form and order confirmation page using EJS server-rendered templates
-* Implemented `GET /checkout/:id` and `POST /orders` routes for the checkout flow
-* Implemented `GET /confirmation/:orderId` with Post/Redirect/Get pattern to prevent duplicate order submissions on browser refresh
-* Added idempotency checks in the SQS worker using DynamoDB conditional writes to prevent duplicate orders
-* Added `GET /health` (shallow) and `GET /health/deep` (DynamoDB connectivity check) endpoints for ALB health monitoring
-* Implemented structured JSON logging for request tracing, order events, worker events, and failures
-* Added request tracing with generated `traceId` propagated across the app and SQS worker
+* Added guest checkout form using EJS, Added user-facing order received / confirmation page (EJS), Added GET /checkout/:id route for selected products
+* Added POST /orders endpoint for order submission, Linked POST /orders submission API to DynamoDB, Validated checkout request data: customer info, address, product, quantity
+* Added GET /confirmation/:orderId route using Post/Redirect/Get to prevent refresh resubmission
+* Added idempotency check in SQS with DynamoDB conditional writes to prevent duplicate orders
+* Added GET /health shallow health endpoint for ALB, Added GET /health/deep endpoint for DynamoDB connectivity checks
+* Added structured JSON logging for request tracing, order events, worker events, and failures
+* Added request tracing across app and SQS worker with generated traceId
 
 ### Arnav Dewan
 
-* Provisioned infrastructure with Terraform (ALB, ASG, DynamoDB, SQS, IAM, CloudWatch, multi-AZ)
-* Set up EC2 bootstrap (install deps, env config, run app + worker, logging)
-* Ran k6 load tests (steady + spike, measured performance)
-* Simulated failures (instance crash, worker stop, scaling) and verified recovery + idempotency
+* Terraform: ALB + target group + HTTP listener; ASG + launch template (AL2023); DynamoDB (orders), SQS (checkout queue), private S3 (app zip); IAM + security groups; CloudWatch log groups + alarms; CPU + ALB target-tracking autoscaling; multi-AZ subnets.
+* Deploy / bootstrap: EC2 user-data installs stack, pulls zip from S3, npm ci, sets env (table, queue, region); systemd runs web app (port 80) and SQS→DynamoDB worker; CloudWatch agent ships logs.
+* k6: Steady load (load.js) and spike (spike.js) against BASE_URL; hits home, checkout, static assets, some POST /orders; npm scripts test:k6:load / test:k6:spike.
+* Failure demos: (1) Spike + show ASG scale activity and k6 metrics; (2) Stop app on one instance → unhealthy target + alarm, site still up, logs only on healthy node; (3) Stop all workers → SQS backlog grows, recover by starting workers; orders use orderId + conditional DynamoDB write to avoid duplicates (ORDER_SAVED / DUPLICATE_ORDER_PREVENTED).
 
 ---
 
